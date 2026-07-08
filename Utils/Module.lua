@@ -19,8 +19,6 @@ local function fetch(file)
         Owner, Repository, file
     )
 
-    warn("Fetch : ", file)
-
     return loadstring(game:HttpGet(URL))()
 end
 
@@ -538,14 +536,21 @@ AddModule("Plugins", function()
         })
     end
     
+    local function Translate(En, Th)
+        return _ENV.Thailand and Th or En
+    end
+    
     function Plugins:Community()
         local Community = Plugins:NewPage(115960025411300) do
-            local _1 = Plugins:Section(Community, { "Community", Color3.fromRGB(85, 255, 127) }) do
+            local _1 = Plugins:Section(Community, { Translate("Community", "คอมมูนิตี้"), Color3.fromRGB(85, 255, 127) }) do
                 local Banner = Asset:Get("XYNAPSE404.png") do
                     Community:Banner(Banner or 133959433736215) 
                 end
                 
-                Plugins:Button(_1, { "Discord", "Join our community" }, function()
+                Plugins:Button(_1, {
+                    Translate("Discord", "ดิสคอร์ด"),
+                    Translate("Join our community.", "เข้าร่วมดิสคอร์ดของเรา")
+                }, function()
                     pcall(setclipboard, "https://discord.gg/Wa9MjzDtX5")
                 end)
             end
@@ -556,44 +561,68 @@ AddModule("Plugins", function()
     
     function Plugins:Managers()
         local Managers = Plugins:NewPage(134261589888025) do
-            local _1 = Plugins:Section(Managers, { "Server", Color3.fromRGB(85, 255, 127) }) do
+            local _1 = Plugins:Section(Managers, { Translate("Server", "เซิร์ฟเวอร์"), Color3.fromRGB(85, 255, 127) }) do
                 Configurations:Default("JobId", JobId)
 
-                Plugins:Input(_1, { "JobId", "Put the job id." }, 'JobId')
+                Plugins:Input(_1, { 
+                    Translate("JobId", "ไอดีเซิร์ฟเวอร์"),
+                    Translate("Put the job id.", "กรอกไอดีเซิร์ฟเวอร์")
+                }, 'JobId')
 
-                Plugins:Button(_1, { "Join", "Connect to the server using the provided JobId." }, function()
+                Plugins:Button(_1, {
+                    Translate("Join", "เข้าร่วม"),
+                    Translate("Connect to the server using the provided JobId.", "เข้าร่วมเซิร์ฟเวอร์โดยใช้ไอดีเซิร์ฟเวอร์ที่ใส่"),
+                }, function()
                     Others.Server:Join(Settings['JobId'])
                 end)
 
-                Plugins:Button(_1, { "Change", "Teleport to a different public server instance." }, function()
+                Plugins:Button(_1, {
+                    Translate("Change", "เปลี่ยนเซิร์ฟเวอร์"),
+                    Translate("Teleport to a different public server instance.", "เปลี่ยนเซิร์ฟเวอร์ไปยังเซิร์ฟเวอร์อื่นแบบสุ่ม"),
+                }, function()
                     Others.Server:Change()
                 end)
 
-                Plugins:Button(_1, { "Rejoin", "Reconnect to the current server instance." }, function()
+                Plugins:Button(_1, {
+                    Translate("Rejoin", "รีจอยน์"),
+                    Translate("Reconnect to the current server instance.", "ออกเข้าใหม่ในเซิร์ฟเวอร์เดิม")
+                }, function()
                     Others.Server:Rejoin()
                 end)
             end
             
-            local _2 = Plugins:Section(Managers, { "Optimization", Color3.fromRGB(85, 255, 127) }) do
-                Plugins:Toggle(_2, { "White Screen", "Disabled 3D Rendering to improve performance" }, "White Screen", function(value)
+            local _2 = Plugins:Section(Managers, { Translate("Optimization", "ประสิทธิภาพ"), Color3.fromRGB(85, 255, 127) }) do
+                Plugins:Toggle(_2, {
+                    Translate("White Screen", "หน้าจอขาว"),
+                    Translate("Disabled 3D Rendering to improve performance.", "ปิดการเรนเดอร์ภาพเพื่อเพิ่มประสิทธิภาพในการฟาร์ม"),
+                }, "White Screen", function(value)
                     Others.Optimize:Set3d(value)
                 end)
 
-                Plugins:Button(_2, { "Fast Mode", "Set graphics quality to low" }, function()
+                Plugins:Button(_2, { 
+                    Translate("Fast Mode", "โหมดประสิทธิภาพ"),
+                    Translate("Set graphics quality to low.", "ลดกราฟฟิกให้เหลือต่ำที่สุด"),
+                }, function()
                     Others.Optimize:Low()
                 end)
             end
             
-            local _3 = Plugins:Section(Managers, { "Configurations", Color3.fromRGB(85, 255, 127) }) do
+            local _3 = Plugins:Section(Managers, { Translate("Configurations", "การตั้งค่าขั้นสูง"), Color3.fromRGB(85, 255, 127) }) do
                 local Mobile = if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then true else false
                 
                 Configurations:Default("Interface Scaler", Mobile and 1 or 1.45)
                 
-                Plugins:Slider(_3, { "Interface Scaler", "Set interface scale." }, { 1, 2, 2 }, "Interface Scaler", function(value)
+                Plugins:Slider(_3, {
+                    Translate("Interface Scaler", "ขนาดของหน้าต่างสคริปต์"),
+                    Translate("Set interface scale.", "สามารถปรับขนาดของหน้าต่างสคริปต์")
+                }, { 1, 2, 2 }, "Interface Scaler", function(value)
                     Plugins.Base:SetScale(value)
                 end)
                 
-                Plugins:Button(_3, { "Remove Worksapce", "Reset save setting file to default value." }, function()
+                Plugins:Button(_3, {
+                    Translate("Remove Worksapce", "รีเซ็ตเป็นค่าเริ่มต้น"),
+                    Translate("Reset save setting file to default value.", "ทุกฟังชั่นที่เคยเปิดจะถูกปรับเป็นค่าเริ่มต้น"),
+                }, function()
                     local Files = Configurations.FullPaths
 
                     if Files and isfile(Files) then
