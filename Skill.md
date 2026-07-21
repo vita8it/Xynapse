@@ -294,6 +294,7 @@ return PlayerClass
 
 # General Principles
 
+- Don't Write comments
 - Write readable code first.
 - Performance comes second, readability comes first.
 - Keep functions small.
