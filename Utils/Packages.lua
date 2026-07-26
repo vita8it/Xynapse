@@ -40,7 +40,11 @@ function NewPackage(Name, Module)
     do Packages[Name] = Module()
         return Packages[Name]
     end
-end  
+end 
+
+NewPackage("Importer", function()
+    return Importer
+end)
 
 NewPackage("Connectors", function()
     local Connectors = {}
