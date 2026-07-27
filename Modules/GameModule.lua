@@ -25,13 +25,14 @@ end
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService('UserInputService')
+local UserInputService = game:GetService("UserInputService")
 local TeleportService = game:GetService("TeleportService")
 local TweenService = game:GetService("TweenService")
+local VirtualUser = game:GetService("VirtualUser")
 local RunService = game:GetService("RunService")
-local Lighting = game:GetService('Lighting')
+local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
-local CoreGui = game:GetService('CoreGui')
+local CoreGui = game:GetService("CoreGui")
 
 local WorldOrigin = workspace:WaitForChild("_WorldOrigin")
 local ChestModels = workspace:WaitForChild("ChestModels")
@@ -39,7 +40,7 @@ local Characters = workspace:WaitForChild("Characters")
 local SeaBeasts = workspace:WaitForChild("SeaBeasts")
 local Enemies = workspace:WaitForChild("Enemies")
 local Boats = workspace:WaitForChild("Boats")
-local NPCs = workspace:WaitForChild('NPCs')
+local NPCs = workspace:WaitForChild("NPCs")
 local Map = workspace:WaitForChild("Map")
 
 local EnemySpawns = WorldOrigin:WaitForChild("EnemySpawns")
@@ -2270,8 +2271,14 @@ task.spawn(function()
     end
 
     for _, Spawn in EnemySpawns:GetChildren() do NewSpawn(Spawn) end
+    
     Connect(EnemySpawns.ChildAdded, NewSpawn)
     Connect(Locations.ChildAdded, NewIslandAdded)
+    
+    Connect(Player.Idled, function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end)
 end)
 
 return Module, Cache
