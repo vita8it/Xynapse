@@ -2274,4 +2274,4 @@ task.spawn(function()
     Connect(Locations.ChildAdded, NewIslandAdded)
 end)
 
-return Module
+return Module, Cache
