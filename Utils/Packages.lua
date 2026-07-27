@@ -690,7 +690,7 @@ NewPackage("TweenManager", function()
         self.Tween:Play()
 
         if Tweens[ Object ] then
-            Tweens[ Object ]:destroy()
+            Tweens[ Object ]:Destroy()
         end
 
         Tweens[ Object ] = self
@@ -708,7 +708,7 @@ NewPackage("TweenManager", function()
 
     function TweenManager:StopTween(Object)
         if Object and Tweens[ Object ] then
-            Tweens[ Object ]:destroy()
+            Tweens[ Object ]:Destroy()
         end
     end
 
