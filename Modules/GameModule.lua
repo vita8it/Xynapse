@@ -1,8 +1,15 @@
 local Packages, Settings = ...
 
-const _ENV = (getgenv or getrenv or getfenv)()
+assert(Packages, "Packages timed out.")
+assert(Settings, "Settings timed out.")
 
-local Module, Cache = {}, {}
+local _ENV = (getgenv or getrenv or getfenv)()
+
+local Module, Cache = {}, {} do
+    Cache.Equipped = nil
+    Cache.Enemies = {}
+    Cache.Bring = {}
+end
 
 local Connectors = Packages.Connectors
 local Importer = Packages.Importer
@@ -45,6 +52,7 @@ local CommF = Remotes:WaitForChild("CommF_")
 local CommE = Remotes:WaitForChild("CommE")
 
 local Player = Players.LocalPlayer
+local PlayerGui = Player.PlayerGui
 
 local RenderStepped = RunService.RenderStepped
 local Heartbeat = RunService.Heartbeat
@@ -53,13 +61,25 @@ local Stepped = RunService.Stepped
 local KeyboardEnabled = UserInputService.KeyboardEnabled
 local TouchEnabled = UserInputService.TouchEnabled
 
+local hookmetamethod = hookmetamethod or (function( ... ) return ... end)
+local getnamecallmethod = getnamecallmethod or (function( ... ) return ... end)
+
+local sethiddenproperty = sethiddenproperty or (function( ... ) return ... end)
+local getsenv = getsenv or (function( ... ) return ... end)
+
+assert(hookmetamethod, "hookmetamethod is unavailable.")
+assert(getnamecallmethod, "getnamecallmethod is unavailable.")
+
+assert(sethiddenproperty, "sethiddenproperty is unavailable.")
+assert(getsenv, "getsenv is unavailable.")
+
 local ServerOwnerId = ReplicatedStorage:FindFirstChild("PrivateServerOwnerId")
 local IsPrivateServer = ServerOwnerId and ServerOwnerId.Value ~= 0 or true
 
-const KILLAURA_TAG = _ENV.TAGS_KILLABLE or tostring(math.random(120, 2e4))
-const BRING_TAG = _ENV.TAGS_BRINGABLE or tostring(math.random(80, 2e4))
+local KILLAURA_TAG = _ENV.TAGS_KILLABLE or tostring(math.random(120, 2e4))
+local BRING_TAG = _ENV.TAGS_BRINGABLE or tostring(math.random(80, 2e4))
 
-const HIDDEN_SETTINGS = {} do
+local HIDDEN_SETTINGS = {} do
     _ENV.TAGS_KILLABLE = KILLAURA_TAG
     _ENV.TAGS_BRINGABLE = BRING_TAG
 end
@@ -104,6 +124,12 @@ Module.PirateRaid = 0 do
     Module.SeaName = { "Main", "Dressrosa", "Zou" }
     Module.Sea = tonumber(workspace:GetAttribute("MAP"):match("^Sea(%d+)$") ) or 1
 end
+
+NewModule("SkillManagers", function()
+    return Importer("Modules/SkillManagers")(
+        Module, Settings, Connect
+    )
+end)
 
 NewModule("RaidList", function()
     local Success, RaidModule = pcall(require, ReplicatedStorage:WaitForChild("Raids"))
@@ -312,18 +338,48 @@ NewModule("CalculateManager", function()
 
         return (Result - Current).Unit
     end
+    
+    function Module:FormatCommas(Number)
+        if typeof(Number) == 'string' then return Number end
+
+        local Formatted = tostring(Number)
+        local Left, Num, Right = string.match(
+            Formatted, '^([^%d]*%d)(%d*)(.-)$'
+        )
+
+        Num = Num:reverse():gsub('(%d%d%d)', '%1,'):reverse()
+        Num = Num:gsub('^,', '')
+
+        return Left, Num, Right
+    end
+
+    function Module:MatchString(v1, v2)
+        local String = tostring(v1)
+
+        if type(v2) == "string" then
+            return String:find(v2, 1, true) ~= nil
+        end
+
+        for _, v in v2 do
+            if String:find(v, 1, true) ~= nil then
+                return true
+            end
+        end
+    end
+    
+    function Module:DiffVector(Offset)
+        return {
+            Vector3.new(0, 0, Offset),
+            Vector3.new(0, 0, -Offset),
+            Vector3.new(Offset, 0, 0),
+            Vector3.new(-Offset, 0, 0)
+        }
+    end
 end)
 
 NewModule("NetworkManager", function()
     local NetworkManager = {}
-
-    local Remotes = ReplicatedStorage:WaitForChild("Remotes")
-    local Modules = ReplicatedStorage:WaitForChild("Modules")
-
     local Net = require(Modules:WaitForChild("Net"))
-
-    local CommF = Remotes:WaitForChild("CommF_")
-    local CommE = Remotes:WaitForChild("CommE")
 
     function Module:Send(IsEvent, Name, ...)
         local Remote = Cache[Name]
@@ -343,6 +399,10 @@ NewModule("NetworkManager", function()
         end
 
         return Remote:InvokeServer(...)
+    end
+    
+    function Module:TravelTo(Sea)
+        self:ComF(`Travel{self.SeaName[Sea]}`)
     end
 
     function Module:ComF(...)
@@ -497,8 +557,6 @@ NewModule("FastAttack", function()
     end)
 
     task.defer(pcall, function()
-        assert(getsenv, "getsenv is unavailable.")
-
         local PlayerScripts = Player.PlayerScripts
         local LocalScript = PlayerScripts:FindFirstChildOfClass("LocalScript")
 
@@ -520,8 +578,11 @@ NewModule("FastAttack", function()
 end)
 
 NewModule("DataManagers", function()
-    local DataManagers = {} do
-        DataManagers.FruitsId = Importer('Modules/FruitsModule')() 
+    local DataManagers = Importer('Modules/DataModule')(Module.Sea)
+    local Currently = DataManagers.Currently
+
+    function DataManagers:GetByMaterial(Material)
+        return Currently.Materials[Material] or {}
     end
 
     local function NewData(Instancer)
@@ -530,7 +591,6 @@ NewModule("DataManagers", function()
         end
         
         local Name = Instancer.Name
-
         if not DataManagers[Name] then
             DataManagers[Name] = Instancer.Value
 
@@ -645,6 +705,10 @@ NewModule("InventoryModule", function()
             end
         end
     end
+    
+    function InventoryModule:CanUseGate()
+        return Module.Sea ~= 3 or self.Unlocked['Valkyrie Helm']
+    end
 
     function InventoryModule:RemoveItem(ItemName)
         if type(ItemName) == "string" then
@@ -653,6 +717,21 @@ NewModule("InventoryModule", function()
             self.Count[ItemName] = nil
             self.Items[ItemName] = nil
         end
+    end
+    
+    function InventoryModule:HaveItem(Name, Character, Backpack)
+        if self.Unlocked[Name] then
+            return true
+        end
+
+        Character = Character or Player.Character
+        Backpack = Backpack or Player:FindFirstChildOfClass("Backpack")
+
+        if not Character or not Backpack then
+            return false
+        end
+
+        return Character:FindFirstChild(Name) or Backpack:FindFirstChild(Name)
     end
 
     local function OnClientEvent(Method, ...)
@@ -681,6 +760,18 @@ NewModule("InventoryModule", function()
     end)
 
     return InventoryModule
+end)
+
+NewModule("StockManager", function()
+    return setmetatable({}, {
+        __call = function(self, IsAdvanced)
+            if not self.Cached then
+                self.Cached = require(ReplicatedStorage.Controllers.UI.FruitShop)
+            end
+            
+            return self.Cached.Open(self.Cached, IsAdvanced and "AdvancedFruitDealer")
+        end
+    })
 end)
 
 NewModule("QuestManager", function()
@@ -727,7 +818,7 @@ NewModule("QuestManager", function()
     function QuestManager:NPCsData(CurrentLevel)
         local Data, Levels = {}, {}
 
-        for _, Npcs in self.GuideModule[ Module.Sea ] do
+        for _, Npcs in self.GuideModule.Data.NPCList do
             if not Npcs.InternalQuestName then continue end
 
             if not table.find(self.Blacklist, Npcs.InternalQuestName) then
@@ -892,7 +983,7 @@ NewModule("EnemiesModule", function()
                 local Enemy = Enemies[i]
 
                 if Module:IsAlive(Enemy) then
-                    Cached.Enemies[TagName] = Enemy
+                    Cache.Enemies[TagName] = Enemy
                     return Enemy
                 end
             end
@@ -959,22 +1050,22 @@ NewModule("EnemiesModule", function()
         end
     end
 
-    function EnemiesModule:GetEnemies(Range, Name)
-        local Nearest, Distance = nil, math.huge
+    function EnemiesModule:GetEnemies(Range, Names)
+        local Distance, Nearest = Range or math.huge, nil
         local EnemiesList = Enemies:GetChildren()
 
         for i = 1, #EnemiesList do
             local Enemy = EnemiesList[i]
 
             if not Enemy.PrimaryPart then continue end
-            if not ValidData(Name, Enemy) then continue end
+            if not ValidData(Names, Enemy) then continue end
+            if not Module:IsAlive(Enemy) then continue end
 
-            if Module:IsAlive(Enemy) then
-                local Magnitude = Module:ToDistance(Enemy)
+            local Magnitude = Module:ToDistance(Enemy)
 
-                if Enemy and (not Range or Magnitude < Range) and Magnitude < Distance then
-                    Distance, Nearest = Magnitude, Enemy
-                end
+            if Magnitude < Distance then
+                Distance = Magnitude
+                Nearest = Enemy
             end
         end
 
@@ -1031,6 +1122,1156 @@ NewModule("EnemiesModule", function()
     Connect(CollectionService:GetInstanceAddedSignal(BRING_TAG), Bring)
 
     return EnemiesModule
+end)
+
+NewModule("PlayerManagers", function()
+    local PlayerManagers = {}
+    
+    function Module:EquipTool(ToolName, ByType)
+        ByType = ToolName and true or ByType
+        ToolName = ToolName or Settings.FarmTool
+
+        if not self:IsAlive(Player.Character) then
+            return nil
+        end
+
+        local Equipped = Cache.Equipped
+
+        if Equipped and Equipped.Parent and Equipped[ ByType and "ToolTip" or "Name" ] == ToolName then
+            if Equipped:GetAttribute("Locks") then
+                Equipped:SetAttribute("Locks", nil)
+            end
+
+            if Equipped.Parent == Player.Character then
+                return nil
+            elseif Equipped.Parent == Player.Backpack then
+                Player.Character.Humanoid:EquipTool(Equipped)
+                return nil
+            end
+        end
+
+        if ToolName and not ByType then
+            local BackpackTool = Player.Backpack:FindFirstChild(ToolName)
+
+            if BackpackTool then
+                Cache.Equipped = BackpackTool
+                Player.Character.Humanoid:EquipTool(BackpackTool)
+            end
+        else
+            for _, Tool in Player.Backpack:GetChildren() do
+                if Tool:IsA("Tool") and Tool.ToolTip == ToolName then
+                    Cache.Equipped = Tool
+                    Player.Character.Humanoid:EquipTool(Tool)
+                    return nil
+                end
+            end
+        end
+    end
+    
+    function Module:BringEnemies(ToEnemy, SuperBring, CustomCFrame, Distance)
+        if not self:IsAlive(ToEnemy) or not ToEnemy.PrimaryPart then
+            return nil
+        end
+
+        pcall(sethiddenproperty, Player, "SimulationRadius", math.huge)
+
+        if Distance or Settings['Enabled Bring'] then
+            self.IsSuperBring = SuperBring and true or false
+
+            local Name = ToEnemy.Name
+            local BringPositionTag = SuperBring and "ALL_MOBS" or Name
+            local Target = CustomCFrame or ToEnemy.PrimaryPart.CFrame
+            local MaxDistance = Distance or Settings['Bring Distance']
+
+            if not Cache.Bring[BringPositionTag] or (Target.Position - Cache.Bring[BringPositionTag].Position).Magnitude > 25 then
+                Cache.Bring[BringPositionTag] = Target
+            end
+
+            local EnemyList = (not SuperBring and self.EnemiesModule:GetTagged(Name)) or Enemies:GetChildren()
+
+            for i = 1, #EnemyList do
+                local Enemy = EnemyList[i]
+
+                if (SuperBring or Enemy.Name == Name)
+                    and Enemy.Parent == Enemies
+                    and not Enemy:HasTag(BRING_TAG)
+                    and Enemy:FindFirstChild("CharacterReady") then
+
+                    local PrimaryPart = Enemy.PrimaryPart
+
+                    if Module:IsAlive(Enemy) and PrimaryPart then
+                        if Module:ToDistance(PrimaryPart) < MaxDistance then
+                            Enemy.Humanoid.WalkSpeed = 0
+                            Enemy.Humanoid.JumpPower = 0
+                            Enemy:AddTag(BRING_TAG)
+                        end
+                    end
+                end
+            end
+        else
+            if not Cache.Bring[ToEnemy] then
+                Cache.Bring[ToEnemy] = ToEnemy.PrimaryPart.CFrame
+            end
+
+            ToEnemy.PrimaryPart.CFrame = Cache.Bring[ToEnemy]
+        end
+    end
+    
+    return PlayerManagers
+end)
+
+NewModule("IndicatorHandler", function()
+    local IndicatorHandler = {}
+    
+    IndicatorHandler.EspHandlers = {}
+    Cache.RealFruits = {}
+    
+    local GearColor = BrickColor.new("Pastel Blue")
+    local EspManagers = Importer('Modules/EspManagers')(Module, Settings)
+    
+    IndicatorHandler.Flowers = {
+        Flower1 = "Blue Flower",
+        Flower2 = "Red Flower",
+    }
+    
+    IndicatorHandler.Islands = {
+        PrehistoricIsland = "Prehistoric Island",
+        KitsuneIsland = "Kitsune Island",
+        MysticIsland = "Mirage Island",
+        FrozenDimension = "Frozen Dimension"
+    }
+
+    IndicatorHandler.Berries = {
+        "Pink Pig Berry", "Purple Jelly Berry", "Red Cherry Berry",
+        "Blue Icicle Berry", "Green Toad Berry", "Orange Berry",
+        "White Cloud Berry", "Yellow Star Berry",
+    }
+    
+    IndicatorHandler.RealFruits = {
+        "AppleSpawner", "PineappleSpawner", "BananaSpawner"
+    }
+    
+    function IndicatorHandler:Text(Text, Distance)
+        if not Settings["Distance Indicator"] then
+            return Text
+        end
+
+        return string.format(
+            "%s<font color='rgb(160, 160, 160)'> [ %im ]</font>",
+            Text, Distance
+        )
+    end
+
+    function IndicatorHandler:ToBerry(Bush)
+        local Bushs = Bush:GetAttributes()
+        
+        for i = 1, #Bushs do
+            local Bush = Bushs[i]
+            
+            if type(Bush) ~= 'string' then continue end
+            if table.find(self.Berries, Bush) then
+                return Bush
+            end
+        end
+
+        return "Unknown Berry"
+    end
+
+    function IndicatorHandler:ToBloxFruit(Fruit)
+        local Current = Fruit.Name
+        if not Fruit:IsA('Model') then return Current end
+
+        local Idle = Fruit:FindFirstChild('Idle', true)
+        if not Idle then return Current end
+
+        local Id = tostring(Idle.AnimationId)
+        if not Id then return Current end
+
+        local Name = Module.FruitsId[Id]
+        if not Name then return Current end
+
+        return Name .. " [ Spawned ]"
+    end
+    
+    function IndicatorHandler.NewChests()
+        local Collects = {}
+        local Chests = CollectionService:GetTagged("_ChestTagged")
+        
+        for i = 1, #Chests do
+            if not Chests[i]:GetAttribute("IsDisabled") then
+                Collects[#Collects + 1] = Chests[i]
+            end
+        end
+        
+        return Collects
+    end
+    
+    function IndicatorHandler.NewBerries()
+        local Collects = {}
+        local Berries = CollectionService:GetTagged("BerryBush")
+
+        for i = 1, #Berries do
+            if next(Berries[i]:GetAttributes()) then
+                Collects[#Collects + 1] = Berries[i]
+            end
+        end
+
+        return Collects
+    end
+    
+    function IndicatorHandler.NewFruits()
+        local Collects = {}
+
+        for _, Name in IndicatorHandler.RealFruits do
+            local Folder = Cache.RealFruits[Name]
+
+            if not Folder then
+                Folder = workspace:FindFirstChild(Name)
+                Cache.RealFruits[Name] = Folder
+            end
+
+            if not Folder then continue end
+
+            for _, Fruit in Folder:GetChildren() do
+                if Fruit:IsA("Tool") then
+                    Collects[#Collects + 1] = Fruit
+                end
+            end
+        end
+
+        return Collects
+    end
+
+    function IndicatorHandler.NewGear()
+        local Mirage = Map:FindFirstChild("MysticIsland")
+        if not Mirage then return {} end
+
+        local Cached = Cache.Gear
+
+        if Cached and Cached[1] and Cached[1]:IsDescendantOf(Mirage) then
+            return Cached
+        end
+
+        local Collects = {}
+        local Objects = Mirage:GetChildren()
+
+        for i = 1, #Objects do
+            local Object = Objects[i]
+
+            if Object:IsA("MeshPart") and Object.BrickColor == GearColor then
+                Collects[#Collects + 1] = Object
+            end
+        end
+
+        Cache.Gear = Collects
+        return Collects
+    end
+    
+    function IndicatorHandler:AddEsp(Flag, Custom) self.EspHandlers[Flag] = Custom end do
+        IndicatorHandler:AddEsp("Spacial Island", {
+            Colors = Color3.fromRGB(255, 0, 127),
+            Folder = Map,
+
+            Valid = function(Island)
+                return IndicatorHandler.Islands[Island.Name] ~= nil
+            end,
+
+            CustomName = function(Island, Distance)
+                return IndicatorHandler:Text(
+                    IndicatorHandler.Islands[Island.Name] or Island.Name,
+                    Distance
+                )
+            end,
+        })
+
+        IndicatorHandler:AddEsp("Devil Fruits", {
+            Colors = Color3.fromRGB(255, 0, 0),
+            Folder = workspace,
+
+            Valid = function(Fruit)
+                return Fruit.Name:find("Fruit") ~= nil
+            end,
+
+            CustomName = function(Fruit, Distance)
+                return IndicatorHandler:Text(
+                    IndicatorHandler:GetBloxFruitName(Fruit),
+                    Distance
+                )
+            end,
+        })
+
+        IndicatorHandler:AddEsp("Sea Beast", {
+            Colors = Color3.fromRGB(0, 85, 127),
+
+            Folder = function()
+                return SeaBeasts:GetChildren()
+            end,
+
+            Valid = function(SeaBeast)
+                if not SeaBeast:IsA("Model") then
+                    return false
+                end
+
+                local Health = SeaBeast:FindFirstChild("Health")
+                return Health and Health.Value > 0
+            end,
+
+            CustomName = function(SeaBeast, Distance)
+                local Health = SeaBeast:FindFirstChild("Health")
+
+                return IndicatorHandler:Text(
+                    Health and string.format("Sea Beast [ %i ]", Health.Value) or "Sea Beast",
+                    Distance
+                )
+            end,
+        })
+
+        IndicatorHandler:AddEsp("Flowers", {
+            Colors = Color3.fromRGB(255, 170, 255),
+            Folder = workspace,
+
+            Valid = function(Flower)
+                return Flower.Name:find("Flower") ~= nil
+            end,
+
+            CustomName = function(Flower, Distance)
+                return IndicatorHandler:Text(
+                    IndicatorHandler.Flowers[Flower.Name] or Flower.Name,
+                    Distance
+                )
+            end,
+        })
+
+        IndicatorHandler:AddEsp("Players", {
+            Colors = Color3.fromRGB(255, 255, 255),
+            Folder = Characters,
+
+            Valid = function(Character)
+                local Target = Players:GetPlayerFromCharacter(Character)
+                return Target and Target ~= Player
+            end,
+        })
+
+        IndicatorHandler:AddEsp("Chest", {
+            Colors = Color3.fromRGB(255, 255, 127),
+            Folder = IndicatorHandler.NewChests,
+
+            Valid = function(Chest)
+                return not Chest:GetAttribute("IsDisabled")
+            end,
+
+            CustomName = function(_, Distance)
+                return IndicatorHandler:Text("Chest", Distance)
+            end,
+        })
+
+        IndicatorHandler:AddEsp("Berries", {
+            Colors = Color3.fromRGB(101, 104, 255),
+            Folder = IndicatorHandler.NewBerry,
+
+            Valid = function(Bush)
+                return next(Bush:GetAttributes()) ~= nil
+            end,
+
+            CustomName = function(Bush, Distance)
+                return IndicatorHandler:Text(
+                    IndicatorHandler:GetBerryName(Bush),
+                    Distance
+                )
+            end,
+        })
+
+        IndicatorHandler:AddEsp("Fruits", {
+            Colors = Color3.fromRGB(0, 255, 127),
+            Folder = IndicatorHandler.NewFruits,
+
+            Valid = function(Fruit)
+                return Fruit:IsA("Tool") and Fruit.Parent ~= nil
+            end,
+
+            CustomName = function(Fruit, Distance)
+                return IndicatorHandler:Text(Fruit.Name, Distance)
+            end,
+        })
+
+        IndicatorHandler:AddEsp("Gear", {
+            Colors = Color3.fromRGB(85, 255, 255),
+            Folder = IndicatorHandler.NewGear,
+
+            Valid = function(Gear)
+                return Gear:IsA("MeshPart") and Gear.Parent ~= nil
+            end,
+
+            CustomName = function(_, Distance)
+                return IndicatorHandler:Text("Gear", Distance)
+            end,
+        })
+
+        IndicatorHandler:AddEsp("Ship", {
+            Colors = Color3.fromRGB(115, 169, 255),
+            Folder = Boats,
+
+            Valid = function(Ship)
+                return Ship.Parent ~= nil
+            end,
+
+            CustomName = function(Ship, Distance)
+                local Owner = Ship:FindFirstChild("Owner")
+
+                if Owner and Owner.Value then
+                    return IndicatorHandler:Text(
+                        string.format("%s [ %s ]", Ship.Name, Owner.Value),
+                        Distance
+                    )
+                end
+
+                return IndicatorHandler:Text(Ship.Name, Distance)
+            end,
+        })
+    end
+
+    IndicatorHandler.EspInstaller = {} do
+        for Name, Data in IndicatorHandler.EspHandlers do
+            local Handler = EspManagers.new(Name)
+            
+            if type(Data.Folder) == "function" then
+                Handler:SetObjects(Data.Folder)
+            else
+                Handler:SetObjects(function()
+                    return Data.Folder:GetChildren()
+                end)
+            end
+            
+            if Data.Valid then
+                Handler:Validator(Data.Valid)
+                Handler:SetAlwaysValidate()
+            end
+
+            if Data.CustomName then
+                Handler:SetCustomEspDisplay(Data.CustomName)
+            end
+
+            IndicatorHandler.EspInstaller[Name] = Handler
+        end
+    end
+
+    IndicatorHandler.OnToggle = function(Value, Select)
+        for Name, Handler in IndicatorHandler.EspInstaller do
+            Handler.Enabled = Value and table.find(Select, Name) ~= nil
+        end
+    end
+
+    return IndicatorHandler
+end)
+
+NewModule("ObjectModule", function()
+    local ObjectModule = {}
+    
+    local FruitSpawners = {
+        "AppleSpawner", "PineappleSpawner", "BananaSpawner",
+    }
+    
+    local WaterBase = Map:WaitForChild("WaterBase-Plane")
+    local HalfSize = WaterBase.Size * 0.5
+    
+    function ObjectModule:IsOnSafeZone(Position)
+        for _, Object in WorldOrigin.SafeZones:GetChildren() do
+            if not Object:IsA("BasePart") then continue end
+
+            local Mesh = Object:FindFirstChildOfClass("SpecialMesh")
+            
+            local Radius = (Mesh and Object.Size.X or Object.Size.X * Mesh.Scale.X) / 2
+            local Distance = (Position - Object.Position).Magnitude
+
+            if Distance <= Radius then
+                return true
+            end
+        end
+    end
+    
+    function ObjectModule:IsOwnerShip(Model)
+        local Owner = Model:FindFirstChild("Owner")
+
+        if not Owner or not Owner:IsA("ObjectValue") then
+            return false
+        end
+
+        if tostring(Owner.Value) ~= Player.Name then
+            return false
+        end
+
+        return true
+    end
+
+    function ObjectModule:IsOnWater(Position)
+        Position = typeof(Position) == "Instance" and Position.Position or Position
+        local Offset = Position - WaterBase.Position
+        
+        return math.abs(Offset.X) <= HalfSize.X and math.abs(Offset.Z) <= HalfSize.Z and Offset.Y <= 2
+    end
+    
+    function ObjectModule:RemoveBoatCollision(Boat)
+        local Objects = Boat:GetDescendants()
+
+        for i = 1, #Objects do
+            local BasePart = Objects[i]
+
+            if BasePart:IsA("BasePart") and BasePart.CanCollide then
+                BasePart.CanCollide = false
+            end
+        end
+    end
+
+    ObjectModule.RealFruits = setmetatable({}, {
+        __call = function(self)
+            local Cached = self.Cached
+
+            if Cached and Cached.Parent then
+                return Cached
+            end
+
+            self.Spawners = self.Spawners or {}
+            for i = 1, #FruitSpawners do
+                local Spawner = self.Spawners[i]
+
+                if not Spawner then
+                    Spawner = workspace:FindFirstChild(FruitSpawners[i])
+                    self.Spawners[i] = Spawner
+                end
+
+                if Spawner then continue end
+                local Fruits = Spawner:GetChildren()
+                
+                for Tool = 1, #Fruits do
+                    local Fruit = Fruits[Tool]
+                    if not Fruit:IsA("Tool") then continue end
+
+                    local Handle = Fruit:FindFirstChild("Handle")
+                    if not Handle then continue end
+
+                    self.Cached = Handle
+                    return Handle
+                end
+            end
+        end,
+    })
+    
+    ObjectModule.DevilFruits = setmetatable({}, {
+        __call = function(self)
+            local Cached = self.Cached
+
+            if Cached and Cached.Parent and Cached.Parent == workspace then
+                local Handle = Cached:FindFirstChild("Handle")
+
+                if Handle and not ObjectModule:IsOnWater(Handle.Position) then
+                    return Handle
+                end
+            end
+
+            if self.Debounce and tick() < self.Debounce then
+                return nil
+            end
+
+            local Nearest, Distance = nil, math.huge
+            local Objects = workspace:GetChildren()
+
+            for i = 1, #Objects do
+                local Fruit = Objects[i]
+
+                if not Fruit.Name:find("Fruit") then continue end
+
+                local Handle = Fruit:FindFirstChild("Handle")
+                if not Handle then continue end
+
+                if ObjectModule:IsOnWater(Handle.Position) then continue end
+
+                local Magnitude = Module:ToDistance(Handle)
+
+                if Magnitude < Distance then
+                    Distance = Magnitude
+                    Nearest = Fruit
+                end
+            end
+
+            self.Cached = Nearest
+            self.Debounce = tick() + 0.2
+
+            return Nearest and Nearest.Handle
+        end,
+    })
+    
+    ObjectModule.Players = setmetatable({}, {
+        __call = function(self, CustomCondition)
+            local Cached = self.Cached
+            local Debouce = self.Debounce
+            local Position = self.Position
+            
+            if Cached and Position and Debouce and Module:IsAlive(Cached) then
+                if Module:ToDistance(Position) < 5 and tick() < Debouce then
+                    return Cached
+                end
+            end
+
+            local Nearest, Distance = nil, math.huge
+            local PlayerList = Players:GetPlayers()
+
+            for i = 1, #PlayerList do
+                local Player = PlayerList[i]
+                if Players.LocalPlayer == Player then continue end
+
+                if Player:GetAttribute("PvpDisabled") then continue end
+                if Player:GetAttribute("IslandRaiding") then continue end
+
+                if CustomCondition and not CustomCondition(Player) then continue end
+
+                local Character = Player.Character
+                if not Character or not Module:IsAlive(Character) then continue end
+
+                local PrimaryPart = Character.PrimaryPart
+                if not PrimaryPart then continue end
+                
+                if ObjectModule:IsOnSafeZone(PrimaryPart.Position) then continue end
+                local Magnitude = Module:ToDistance(PrimaryPart)
+
+                if Magnitude < Distance then
+                    Nearest, Distance = Character, Magnitude
+                end
+            end
+
+            if Nearest then
+                self.Cached = Nearest
+                self.Position = Nearest:GetPivot().Position
+            else
+                self.Cached = nil
+                self.Position = nil
+            end
+
+            self.Debounce = tick() + 0.1
+
+            return Nearest
+        end,
+    })
+
+    ObjectModule.Chests = setmetatable({}, {
+        __call = function(self, SelectedIsland)
+            local CachedChest = self.Cached
+
+            if CachedChest and not CachedChest:GetAttribute("IsDisabled") then
+                if not SelectedIsland or CachedChest:IsDescendantOf(SelectedIsland) then
+                    return CachedChest
+                end
+            end
+
+            if self.Debounce and (tick() - self.Debounce) < 0.5 then
+                return nil
+            end
+
+            local Chests = CollectionService:GetTagged("_ChestTagged")
+            local Distance, Nearest = math.huge, nil
+
+            for i = 1, #Chests do
+                local Chest = Chests[i]
+                local Magnitude = Module:ToDistance(Chest)
+
+                if not SelectedIsland or Chest:IsDescendantOf(SelectedIsland) then
+                    if not Chest:GetAttribute("IsDisabled") and Magnitude < Distance then
+                        Distance, Nearest = Magnitude, Chest
+                    end
+                end
+            end
+
+            self.Debounce = tick()
+            self.Cached = Nearest
+            
+            return Nearest
+        end
+    })
+    
+    ObjectModule.Berries = setmetatable({}, {
+        __call = function(self, BerryArray)
+            local CachedBush = self.Cached
+
+            if CachedBush and CachedBush:IsDescendantOf(Map) then
+                for Tag, CFrame in pairs(CachedBush:GetAttributes()) do
+                    return CachedBush
+                end
+            end
+
+            if self.Debounce and (tick() - self.Debounce) < 0.5 then
+                return nil
+            end
+
+            local BerryBush = CollectionService:GetTagged("BerryBush")
+            local Distance, Nearest = math.huge, nil
+
+            for i = 1, #BerryBush do
+                local Bush = BerryBush[i]
+
+                for AttributeName, BerryName in pairs(Bush:GetAttributes()) do
+                    if not BerryArray or table.find(BerryArray, BerryName) then
+                        local Magnitude = Module:ToDistance(Bush.Parent)
+
+                        if Magnitude < Distance then
+                            Nearest, Distance = Bush, Magnitude
+                        end
+                    end
+                end
+            end
+
+            self.Debounce = tick()
+            self.Cached = Nearest
+            
+            return Nearest
+        end
+    })
+    
+    ObjectModule.LavaRocks = setmetatable({}, {
+        __call = function(self, VolcanoRocks)
+            local Cached = self.LavaRock
+
+            if Cached and Cached.Parent == VolcanoRocks then
+                local LavaEffect = Cached:FindFirstChild("At1Beam", true)
+
+                if LavaEffect and LavaEffect.Enabled then
+                    return Cached
+                end
+            end
+            
+            if self.Debounce and (tick() - self.Debounce) < 0.25 then
+                return nil
+            end
+
+            local Distance, Nearest = math.huge, nil
+            local Rocks = VolcanoRocks:GetChildren()
+
+            for i = 1, #Rocks do
+                local Rock = Rocks[i]
+                if not Rock:IsA("Model") then continue end
+
+                local LavaEffect = Rock:FindFirstChild("At1Beam", true)
+                if not LavaEffect or not LavaEffect.Enabled then continue end
+
+                local Magnitude = Module:ToDistance(Rock)
+
+                if Magnitude < Distance then
+                    Nearest, Distance = Rock, Magnitude
+                end
+            end
+            
+            self.Debounce = tick()
+            self.LavaRock = Nearest
+            
+            return Nearest
+        end,
+    })
+    
+    ObjectModule.TreeEagles = setmetatable({}, {
+        __call = function(self, EagleBossArena)
+            local Cached = self.Cached
+
+            if Cached and Cached.Parent == EagleBossArena and Cached.PrimaryPart then
+                return Cached
+            end
+
+            if self.Debounce and (tick() - self.Debounce) < 0.25 then
+                return nil
+            end
+
+            local Nearest, Distance = math.huge, nil
+            local Objects = EagleBossArena:GetChildren()
+
+            for i = 1, #Objects do
+                local Object = Objects[i]
+                
+                if Object.Name ~= "Tree" then continue end
+                if not Object:IsA("Model") then continue end
+
+                local PrimaryPart = Object.PrimaryPart
+                if not PrimaryPart then continue end
+
+                local Magnitude = Module:ToDistance(PrimaryPart)
+
+                if Magnitude < Distance then
+                    Nearest, Distance = Object, Magnitude
+                end
+            end
+            
+            self.Debounce = tick()
+            self.Cached = Nearest
+            
+            return Nearest
+        end,
+    })
+    
+    ObjectModule.Gifts = setmetatable({}, {
+        __call = function(self)
+            local Cached = self.Cached
+
+            if Cached and Cached.Parent == WorldOrigin then
+                local Value = Cached:FindFirstChild("Value", true)
+
+                if Value and tostring(Value.Value) == Player.Name then
+                    return Cached
+                end
+            end
+
+            if self.Debounce and (tick() - self.Debounce) < 0.25 then
+                return nil
+            end
+
+            local Objects = WorldOrigin:GetChildren()
+
+            for i = 1, #Objects do
+                local Object = Objects[i]
+                if Object.Name ~= "Present" then continue end
+
+                local Value = Object:FindFirstChild("Value", true)
+                if not Value then continue end
+
+                if tostring(Value.Value) == Player.Name then
+                    self.Debounce = tick()
+                    self.Cached = Object
+                    
+                    return Object
+                end
+            end
+
+            self.Cached = nil
+        end,
+    })
+    
+    ObjectModule.Raids = setmetatable({}, {
+        __call = function(self)
+            local Cached = self.Cached
+
+            if Cached and Cached.Parent == Locations and Module:ToDistance(Cached) < 3500 then
+                return Cached
+            end
+
+            if self.Debounce and (tick() - self.Debounce) < 0.25 then
+                return nil
+            end
+
+            local Islands = {}
+            local Children = Locations:GetChildren()
+
+            for i = 1, #Children do
+                local Island = Children[i]
+                Islands[Island.Name] = Island
+            end
+
+            for i = 5, 1, -1 do
+                local Island = Islands["Island " .. i]
+
+                if Island and Module:ToDistance(Island) < 3500 then
+                    self.Cached = Island
+                    self.Debounce = tick()
+                    
+                    return Island
+                end
+            end
+
+            self.Cached = nil
+        end,
+    })
+    
+    ObjectModule.SeaBeasts = setmetatable({}, {
+        __call = function(self)
+            local Cached = self.Cached
+
+            if Cached and Cached.Parent == SeaBeasts and Module:IsAlive(Cached) then
+                return Cached
+            end
+
+            if self.Debounce and tick() < self.Debounce then
+                return nil
+            end
+
+            local Nearest, Distance = nil, 5000
+            local Beasts = SeaBeasts:GetChildren()
+
+            for i = 1, #Beasts do
+                local SeaBeast = Beasts[i]
+
+                if not SeaBeast:IsA("Model") then continue  end
+                if not Module:IsAlive(SeaBeast) then continue end
+
+                local RootPart = SeaBeast:FindFirstChild("HumanoidRootPart")
+                if not RootPart then continue end
+
+                local Magnitude = Module:ToDistance(RootPart)
+
+                if Magnitude < Distance then
+                    Nearest, Distance = SeaBeast, Magnitude
+                end
+            end
+
+            self.Cached = Nearest
+            self.Debounce = tick() + (Nearest and 0.25 or 0.05)
+
+            return Nearest
+        end,
+    })
+    
+    ObjectModule.MyShips = setmetatable({}, {
+        __call = function(self, Name)
+            self.Cached = self.Cached or {}
+            self.Debounces = self.Debounces or {}
+
+            local Cached = self.Cached[Name]
+
+            if Cached and Cached.Parent == Boats then
+                if Cached:GetAttribute("IsBoat") and ObjectModule:IsOwnerShip(Cached) then
+                    local Humanoid = Cached:FindFirstChild("Humanoid")
+
+                    if Humanoid and Humanoid.Value > 0 then
+                        return Cached
+                    end 
+                end
+            end
+
+            local Debounce = self.Debounces[Name]
+
+            if Debounce and tick() < Debounce then
+                return nil
+            end
+
+            local Nearest, Distance = nil, 5000
+            local Ships = Boats:GetChildren()
+
+            for i = 1, #Ships do
+                local Ship = Ships[i]
+                
+                if Ship.Name ~= Name then continue end
+                if not ObjectModule:IsOwnerShip(Ship) then continue end
+                
+                if not Module:IsAlive(Ship) then continue end
+                if not Ship:GetAttribute("IsBoat") then continue end
+
+                local Magnitude = Module:ToDistance(Ship)
+
+                if Magnitude < Distance then
+                    Nearest, Distance = Ship, Magnitude
+                end
+            end
+
+            self.Cached[Name] = Nearest
+            self.Debounces[Name] = tick() + (Nearest and 0.25 or 0.05)
+
+            return Nearest
+        end,
+    })
+    
+    ObjectModule.EnemyShips = setmetatable({}, {
+        __call = function(self, Names)
+            self.Cached = self.Cached or {}
+            self.Debounces = self.Debounces or {}
+
+            local Key = table.concat(Names, "|")
+            local Cached = self.Cached[Key]
+
+            if Cached and Cached.Parent == Enemies then
+                return Cached
+            end
+            
+            if Module:IsAlive(Cached) and Cached:FindFirstChild("Seat", true) then
+                return Cached
+            end
+
+            local Debounce = self.Debounces[Key]
+            
+            if Debounce and tick() < Debounce then
+                return nil
+            end
+
+            local Nearest, Distance = nil, 5000
+            local EnemyShips = Enemies:GetChildren()
+
+            for i = 1, #EnemyShips do
+                local Ship = EnemyShips[i]
+                if not table.find(Names, Ship.Name) then continue end
+
+                if not Module:IsAlive(Ship) then continue end
+                if not Ship:FindFirstChild("Seat", true) then continue end
+
+                local Magnitude = Module:ToDistance(Ship)
+
+                if Magnitude < Distance then
+                    Nearest, Distance = Ship, Magnitude
+                end
+            end
+
+            self.Cached[Key] = Nearest
+            self.Debounces[Key] = tick() + (Nearest and 0.25 or 0.05)
+
+            return Nearest
+        end,
+    })
+    
+    ObjectModule.BlazeEmbers = setmetatable({}, {
+        __call = function(self)
+            local Cached = self.Cached
+
+            if Cached and Cached.Parent then
+                return Cached
+            end
+
+            if self.Debounce and tick() < self.Debounce then
+                return nil
+            end
+
+            local Nearest, Distance = nil, math.huge
+            local Objects = workspace:GetChildren()
+
+            for i = 1, #Objects do
+                local Ember = Objects[i]
+                if Ember.Name ~= "EmberTemplate" then continue end
+
+                local Part = Ember:FindFirstChild("Part")
+                if not Part then continue end
+
+                local Magnitude = Module:ToDistance(Part)
+
+                if Magnitude < Distance then
+                    Nearest, Distance = Part, Magnitude
+                end
+            end
+
+            self.Cached = Nearest
+            self.Debounce = tick() + 0.2
+
+            return Nearest
+        end,
+    })
+    
+    return ObjectModule
+end)
+
+NewModule("SeaEventManagers", function()
+    local SeaEventManagers = {}
+    
+    SeaEventManagers.ZoneCoordinates = {
+        ['Infinite - ∞'] = {-9999999, 9999999},
+        ['Low - 1'] = {-21227, 4047},
+        ['Meduim - 2'] = {-24237, 6381},
+        ['High - 3'] = {-27105, 8959},
+        ['Extreme - 4'] = {-29350, 11744},
+        ['Crazy - 5'] = {-32404, 16208},
+        ['??? - 6'] = {-35611, 20548},
+    }
+
+    SeaEventManagers.SeaBeastAnims = {
+        "rbxassetid://8708225668",
+        "rbxassetid://8708223619",
+        "rbxassetid://8708222938"
+    }
+    
+    function SeaEventManagers:Zone(Zone)
+        local Coords = self.ZoneCoordinates[Zone]
+
+        if Coords then
+            return CFrame.new(Coords[1], 100, Coords[2])
+        end
+
+        return CFrame.new(-9999999, 100, 9999999)
+    end
+    
+    function SeaEventManagers:IsSeaBeastHiding(Animator)
+        for _, Track in Animator:GetPlayingAnimationTracks() do
+            if self.SeaBeastAnims[Track.Animation.AnimationId] then
+                return true
+            end
+        end
+    end
+    
+    return SeaEventManagers
+end)
+
+NewModule("HookManagers", function()
+    local Reference = {}
+
+    local HookManagers = {} do
+        _ENV.Target = Vector3.zero
+    end
+
+    function HookManagers:IsReference()
+        for _, Flag in Reference do
+            if _ENV.Settings[Flag] == true then
+                return true 
+            end 
+        end 
+    end
+    
+    function HookManagers:Import(Name)
+        if not Reference[Name] then
+            table.insert(Reference, Name)
+        end
+    end
+    
+    function HookManagers:SetTarget(Vector)
+        _ENV.Target = (typeof(Vector) == 'CFrame' and Vector.Position) or Vector
+    end
+    
+    if not _ENV.Original then
+        task.defer(function()
+            local Original; Original = hookmetamethod(game, "__namecall", function(self, ...)
+                local Method = getnamecallmethod()
+
+                if tostring(self) == "PlayerGui" and Method == "Destroy" then
+                    return warn("Override PlayerGui:", Method)
+                end
+
+                if Method == "FireServer" or Method == "InvokeServer" then
+                    local v1, v2 = ...
+
+                    if Method == "InvokeServer" and v1 == 'X' and typeof(v2) == 'Vector3' and self.Name == "" then
+                        if HookManagers:IsReference() then
+                            return Original(self, v1, _ENV.Target)
+                        end
+                    end
+
+                    if Method == "FireServer" and self.Name == "RemoteEvent" and typeof(v1) == "Vector3" and v2 == nil then
+                        if HookManagers:IsReference() then
+                            return Original(self, _ENV.Target)
+                        end
+                    end
+                end
+                
+                return Original(self, ...)
+            end)
+            
+            _ENV.Original = Original
+        end)
+    end
+    
+    return HookManagers
+end)
+
+task.spawn(function()
+    local SpawnLocations = Module.SpawnLocations
+    local EnemyLocations = Module.EnemyLocations
+
+    local function NewIslandAdded(Island)
+        if Island.Name:find("Island") then
+            Cache.RaidIsland = nil
+        end
+    end
+
+    local function NewSpawn(Part)
+        local EnemyName = GetEnemyName(Part.Name)
+        EnemyLocations[EnemyName] = EnemyLocations[EnemyName] or {}
+
+        local EnemySpawn = Part.CFrame + Vector3.new(0, 25, 0)
+        SpawnLocations[EnemyName] = Part
+
+        if not table.find(EnemyLocations[EnemyName], EnemySpawn) then
+            table.insert(EnemyLocations[EnemyName], EnemySpawn)
+        end
+    end
+
+    for _, Spawn in EnemySpawns:GetChildren() do NewSpawn(Spawn) end
+    Connect(EnemySpawns.ChildAdded, NewSpawn)
+    Connect(Locations.ChildAdded, NewIslandAdded)
 end)
 
 return Module
