@@ -415,13 +415,13 @@ end)
 
 NewPackage("AssetsModule", function()
     local Constant = "Socute.png"
-    
+
     local AssetsModule = {}
     local Saved = {}
 
     function AssetsModule:Download(Url, Name)
         local Data = game:HttpGet(Url)
-        
+
         Cache.writefile(Name, Data)
         Saved[ Name ] = Data
 
@@ -450,7 +450,7 @@ end)
 
 NewPackage("Plugins", function()
     local Plugins = {}
-    
+
     local StatColors = {
         Working = Color3.fromRGB(0, 200, 100),
         Bugged = Color3.fromRGB(255, 200, 30),
@@ -461,9 +461,9 @@ NewPackage("Plugins", function()
 
     local AssetsModule = Packages.AssetsModule
     local EachOthers = Packages.EachOthers
-    
+
     local Configable = Packages.Configurators.new(Respoitory)
-    
+
     function Plugins:ProxyPage(Page)
         return setmetatable({}, {
             __index = Page,
@@ -506,7 +506,7 @@ NewPackage("Plugins", function()
             Callback = Callback,
         })
     end
-    
+
     function Plugins:Toggle(Section, Info, Flag, Callback)
         local Thread = nil
 
@@ -530,7 +530,7 @@ NewPackage("Plugins", function()
 
         return self.Fallback[Flag]
     end
-    
+
     function Plugins:Slider(Section, Info, Value, Flag, Callback)
         return Section:Slider({
             Title = Info[1],
@@ -546,7 +546,7 @@ NewPackage("Plugins", function()
             end
         })
     end
-    
+
     function Plugins:Dropdown(Section, Info, List, Flag, Callback)
         return Section:Dropdown({
             Title = Info,
@@ -559,7 +559,7 @@ NewPackage("Plugins", function()
             end
         })
     end
-    
+
     function Plugins:Input(Section, Info, Flag, Callback)
         return Section:Textbox({
             Title = Info[1],
@@ -572,14 +572,14 @@ NewPackage("Plugins", function()
             end,
         })
     end
-    
+
     function Plugins:Community()
         local Community = Plugins:Page(115960025411300) do
             Community.Community = "Working" do
                 local Banner = AssetsModule:Get("Socute.png") do
                     Community:Banner(Banner or 133959433736215) 
                 end
-                
+
                 Plugins:Button(Community.Community, {
                     "Discord",
                     "Join our community."
@@ -594,11 +594,11 @@ NewPackage("Plugins", function()
 
     function Plugins:Managers()
         Configable:Default("Language", "English")
-        
+
         local Managers = Plugins:Page(134261589888025) do
             Managers.Server = "Working" do
                 Configable:Default("JobId", JobId)
-                
+
                 Plugins:Input(Managers.Server, { 
                     "JobId",
                     "Put the job id."
@@ -625,7 +625,7 @@ NewPackage("Plugins", function()
                     EachOthers:Rejoin()
                 end)
             end
-            
+
             Managers.Optimize = "Working" do
                 Plugins:Toggle(Managers.Optimize, {
                     "White Screen",
@@ -641,7 +641,7 @@ NewPackage("Plugins", function()
                     EachOthers:Low()
                 end)
             end
-            
+
             Managers.Settings = "Working" do
                 Configable:Default("Scaler", IsMobile and 1 or 1.45)
 
@@ -717,7 +717,7 @@ end)
 
 NewPackage("BodyVelocity", function()
     local Connectors = Packages.Connectors
-
+    
     local BodyVelocity = Instance.new("BodyVelocity") do
         BodyVelocity.Velocity = Vector3.zero
         BodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
@@ -730,16 +730,16 @@ NewPackage("BodyVelocity", function()
         Highlight.FillTransparency = 0.3
     end
 
-    if _ENV.BodyVelocity then
-        _ENV.BodyVelocity:Destroy()
+    if _ENV.tween_bodyvelocity then
+        _ENV.tween_bodyvelocity:Destroy()
     end
 
-    if _ENV.Highlight then
-        _ENV.Highlight:Destroy()
+    if _ENV.highlight then
+        _ENV.highlight:Destroy()
     end
 
-    _ENV.BodyVelocity = BodyVelocity
-    _ENV.Highlight = Highlight
+    _ENV.highlight = Highlight
+    _ENV.tween_bodyvelocity = BodyVelocity
 
     local CanCollideObjects = {}
 
@@ -786,8 +786,8 @@ NewPackage("BodyVelocity", function()
         local BasePart = Character:FindFirstChild("HumanoidRootPart")
         local Humanoid = Character:FindFirstChild("Humanoid")
 
-        local BodyVelocity = _ENV.BodyVelocity
-        local Highlight = _ENV.Highlight
+        local BodyVelocity = _ENV.tween_bodyvelocity
+        local Highlight = _ENV.highlight
 
         if _ENV.OnFarm and BasePart and Humanoid and Humanoid.Health > 0 then
             if BodyVelocity.Parent ~= BasePart then
@@ -802,15 +802,13 @@ NewPackage("BodyVelocity", function()
             Highlight.Parent = nil
         end
 
-        if not Humanoid or not Humanoid.SeatPart or not _ENV.OnFarm then
-            if BodyVelocity.Velocity ~= Vector3.zero then
-                BodyVelocity.Velocity = Vector3.zero
-                Highlight.Parent = nil
-            end
+        if BodyVelocity.Velocity ~= Vector3.zero and (not Humanoid or not Humanoid.SeatPart or not _ENV.OnFarm) then
+            BodyVelocity.Velocity = Vector3.zero
+            Highlight.Parent = nil
         end
     end
 
-    Connectors.Connect(Stepped, function()
+    Connectors.Connect(RenderStepped, function()
         local Character = LocalPlayer.Character
         if not Character then return end
 
