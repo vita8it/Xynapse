@@ -777,6 +777,19 @@ NewModule("StockManager", function()
     })
 end)
 
+NewModule("CodeManager", function()
+    return setmetatable({}, {
+        __call = function()
+            local Codes = Importer('Modules/CodesModule')()
+
+            for Code, Text in Codes do
+                Remotes.Redeem:InvokeServer(Code)
+                wait(Code, Text);
+            end
+        end,
+    })
+end)
+
 NewModule("RemoveEffect", function()
     return setmetatable({}, {
         __call = function(self, Value)
