@@ -820,7 +820,10 @@ NewModule("RemoveEffect", function()
 end)
 
 NewModule("QuestManager", function()
+    local EnemiesModule = Module.EnemiesModule
     local DataManagers = Module.DataManagers
+    
+    local Currently = DataManagers.Currently
 
     local QuestManager = {} do
         QuestManager.Blacklist = { "BartiloQuest", "MarineQuest", "CitizenQuest", "ImpelQuest" }
@@ -883,6 +886,28 @@ NewModule("QuestManager", function()
 
         return self:Pack(Data, Levels)
     end
+    
+    function QuestManager:GetBossData(CurrentLevel)
+        local BestBoss, BestLevel = nil, math.huge
+
+        for Name, Data in next, Currently.Bosses do
+            if Data.Level <= CurrentLevel and Data.Level > BestLevel then
+                BestLevel = Data.Level
+
+                BestBoss = {
+                    Name = Name,
+                    Monster = Name,
+                    Level = 3,
+                    Quest = Data.Quest,
+                    Position = Data.Position,
+                }
+            end
+        end
+        
+        if BestBoss and EnemiesModule:GetClosestByTag(BestBoss.Monster) then
+            return BestBoss
+        end
+    end
 
     function QuestManager:GetQuest()
         local Level = DataManagers.Level
@@ -906,6 +931,9 @@ NewModule("QuestManager", function()
                 }
             end
         else
+            local BossData = self:GetBossData(Level)
+            if BossData then return BossData end
+            
             local Data = self:GetMonster(Level)
             if not Data then return end
 
