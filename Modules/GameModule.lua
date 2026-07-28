@@ -48,6 +48,7 @@ local Locations = WorldOrigin:WaitForChild("Locations")
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
+local Effect = ReplicatedStorage:WaitForChild('Effect')
 
 local CommF = Remotes:WaitForChild("CommF_")
 local CommE = Remotes:WaitForChild("CommE")
@@ -62,17 +63,13 @@ local Stepped = RunService.Stepped
 local KeyboardEnabled = UserInputService.KeyboardEnabled
 local TouchEnabled = UserInputService.TouchEnabled
 
-local hookmetamethod = hookmetamethod or (function( ... ) return ... end)
 local getnamecallmethod = getnamecallmethod or (function( ... ) return ... end)
+local hookmetamethod = hookmetamethod or (function( ... ) return ... end)
+local hookfunction = hookfunction or (function( ... ) return ... end)
 
 local sethiddenproperty = sethiddenproperty or (function( ... ) return ... end)
+local restorefunction = restorefunction or (function( ... ) return ... end)
 local getsenv = getsenv or (function( ... ) return ... end)
-
-assert(hookmetamethod, "hookmetamethod is unavailable.")
-assert(getnamecallmethod, "getnamecallmethod is unavailable.")
-
-assert(sethiddenproperty, "sethiddenproperty is unavailable.")
-assert(getsenv, "getsenv is unavailable.")
 
 local ServerOwnerId = ReplicatedStorage:FindFirstChild("PrivateServerOwnerId")
 local IsPrivateServer = ServerOwnerId and ServerOwnerId.Value ~= 0 or true
@@ -83,6 +80,8 @@ local BRING_TAG = _ENV.TAGS_BRINGABLE or tostring(math.random(80, 2e4))
 local HIDDEN_SETTINGS = {} do
     _ENV.TAGS_KILLABLE = KILLAURA_TAG
     _ENV.TAGS_BRINGABLE = BRING_TAG
+    
+    HIDDEN_SETTINGS.WATER_Y = 120
 end
 
 local function GetEnemyName(strings)
@@ -775,6 +774,35 @@ NewModule("StockManager", function()
             
             return self.Cached.Open(self.Cached, IsAdvanced and "AdvancedFruitDealer")
         end
+    })
+end)
+
+NewModule("RemoveEffect", function()
+    return setmetatable({}, {
+        __call = function(self, Value)
+            local Container = Effect.Container
+
+            if not self.Death then
+                self.Death = require(Container.Death)
+            end
+
+            if not self.Respawn then
+                self.Respawn = require(Container.Respawn)
+            end
+
+            if Value then
+                pcall(hookfunction, self.Death, function( ... )
+                    return ( ... )
+                end)
+
+                pcall(hookfunction, self.Respawn, function( ... )
+                    return ( ... )
+                end)
+            else
+                pcall(restorefunction, self.Death)
+                pcall(restorefunction, self.Respawn)
+            end
+        end,
     })
 end)
 
@@ -1576,7 +1604,17 @@ NewModule("ObjectModule", function()
     }
     
     local WaterBase = Map:WaitForChild("WaterBase-Plane")
-    local HalfSize = WaterBase.Size * 0.5
+    local HalfSize = _ENV.HalfSize or WaterBase.Size * 0.5 do
+        _ENV.HalfSize = HalfSize
+    end
+    
+    function ObjectModule:WalkOnWater(Value)
+        if Value then
+            WaterBase.Size.Y = HIDDEN_SETTINGS.WATER_Y
+        else
+            WaterBase.Size.Y = HalfSize
+        end
+    end
     
     function ObjectModule:IsOnSafeZone(Position)
         for _, Object in WorldOrigin.SafeZones:GetChildren() do
@@ -2153,7 +2191,11 @@ NewModule("ObjectModule", function()
 end)
 
 NewModule("SeaEventManagers", function()
-    local SeaEventManagers = {}
+    local SeaEventManagers = {} do
+        SeaEventManagers.LastShip = nil
+    end
+    
+    local TweenManagers = Packages.TweenManager
     
     SeaEventManagers.ZoneCoordinates = {
         ['Infinite - ∞'] = {-9999999, 9999999},
@@ -2187,6 +2229,40 @@ NewModule("SeaEventManagers", function()
                 return true
             end
         end
+    end
+    
+    function SeaEventManagers:DriveStopped()
+        local Ship = self.LastShip
+
+        if Ship and Ship.Parent then
+            TweenManagers:StopTween(Ship:FindFirstChild("VehicleSeat"))
+        end
+
+        self.LastShip = nil
+    end
+    
+    function SeaEventManagers:Drive(Ship, Target, High)
+        High = High or 100
+
+        self.LastShip = Ship
+
+        local VehicleSeat = Ship:FindFirstChild("VehicleSeat")
+        if not VehicleSeat then return end
+
+        local BodyPosition = VehicleSeat:FindFirstChild("BodyPosition")
+        local BodyVelocity = VehicleSeat:FindFirstChild("BodyVelocity")
+
+        if not BodyPosition or not BodyVelocity then return end
+
+        local Origin = VehicleSeat.Position
+        local Distance = (Target.Position - Ship:GetPivot().Position).Magnitude
+
+        BodyVelocity.P = 0
+        BodyPosition.MaxForce = Vector3.zero
+        BodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+
+        VehicleSeat.CFrame = CFrame.new(Origin.X, High, Origin.Z)
+        TweenManagers.new(VehicleSeat, Distance / 250, "CFrame", Target)
     end
     
     return SeaEventManagers
@@ -2252,37 +2328,112 @@ NewModule("HookManagers", function()
     return HookManagers
 end)
 
-task.spawn(function()
+NewModule("WaitEnemiesModule", function()
+    local WaitEnemiesModule = {}
+    
     local SpawnLocations = Module.SpawnLocations
     local EnemyLocations = Module.EnemyLocations
+    local EnemiesModule = Module.EnemiesModule
+    
+    function WaitEnemiesModule:ShouldStop(Breake)
+        return not _ENV.OnFarm or not Module:IsAlive() or (Breake and Breake())
+    end
 
-    local function NewIslandAdded(Island)
-        if Island.Name:find("Island") then
-            Cache.RaidIsland = nil
+    function WaitEnemiesModule:AnyEnemyFound(Names)
+        for _, Name in Names do
+            if EnemiesModule:GetClosestByTag(Name) then
+                return true
+            end
         end
     end
 
-    local function NewSpawn(Part)
-        local EnemyName = GetEnemyName(Part.Name)
-        EnemyLocations[EnemyName] = EnemyLocations[EnemyName] or {}
+    function WaitEnemiesModule:BuildSpawnPoints(Names)
+        local Points = {}
 
-        local EnemySpawn = Part.CFrame + Vector3.new(0, 25, 0)
-        SpawnLocations[EnemyName] = Part
-
-        if not table.find(EnemyLocations[EnemyName], EnemySpawn) then
-            table.insert(EnemyLocations[EnemyName], EnemySpawn)
+        for _, Name in Names do
+            local Location = EnemyLocations[Name]
+            if not Location then continue end
+            
+            for _, Spawner in Location do
+                Points[#Points + 1] = Spawner
+            end
         end
+
+        return Points
     end
 
-    for _, Spawn in EnemySpawns:GetChildren() do NewSpawn(Spawn) end
+    function WaitEnemiesModule:WaitAtSpawnPoints(Names, SpawnPoints, Breake, Teleport)
+        if self:ShouldStop(Breake) then return end
+        if self:AnyEnemyFound(Names) then return end
+
+        local WaitDelay = Settings['Wait Enemies Delay'] or 0.75
+
+        for _, SpawnCFrame in SpawnPoints do
+            if self:ShouldStop(Breake) then return end
+            if self:AnyEnemyFound(Names) then return end
+            
+            Teleport(SpawnCFrame)
+
+            local WaitStart = tick()
+
+            while tick() - WaitStart < WaitDelay do
+                if self:ShouldStop(Breake) then return end
+                if self:AnyEnemyFound(Names) then return end
+                
+                task.wait(0.1)
+            end
+        end
+
+        if not self:ShouldStop(Breake) and not self:AnyEnemyFound(Names) then
+            self:WaitAtSpawnPoints(Names, SpawnPoints, Breake, Teleport)
+        end
+    end
     
-    Connect(EnemySpawns.ChildAdded, NewSpawn)
-    Connect(Locations.ChildAdded, NewIslandAdded)
-    
-    Connect(Player.Idled, function()
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new())
+    task.spawn(function()
+        local function NewIslandAdded(Island)
+            if Island.Name:find("Island") then
+                Cache.RaidIsland = nil
+            end
+        end
+
+        local function NewSpawn(Part)
+            local EnemyName = GetEnemyName(Part.Name)
+            EnemyLocations[EnemyName] = EnemyLocations[EnemyName] or {}
+
+            local EnemySpawn = Part.CFrame + Vector3.new(0, 25, 0)
+            SpawnLocations[EnemyName] = Part
+
+            if not table.find(EnemyLocations[EnemyName], EnemySpawn) then
+                table.insert(EnemyLocations[EnemyName], EnemySpawn)
+            end
+        end
+
+        for _, Spawn in EnemySpawns:GetChildren() do NewSpawn(Spawn) end
+
+        Connect(EnemySpawns.ChildAdded, NewSpawn)
+        Connect(Locations.ChildAdded, NewIslandAdded)
+
+        Connect(Player.Idled, function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
     end)
+    
+    return function(Names, Breake)
+        Names = type(Names) == "table" and Names or { Names }
+        
+        if not _ENV.TELEPORTER then return end
+        if WaitEnemiesModule:ShouldStop(Breake) then return end
+        if WaitEnemiesModule:AnyEnemyFound(Names) then return end
+
+        local SpawnPoints = WaitEnemiesModule:BuildSpawnPoints(Names)
+
+        if #SpawnPoints > 0 then
+            WaitEnemiesModule:WaitAtSpawnPoints(
+                Names, SpawnPoints, Breake, _ENV.TELEPORTER
+            )
+        end
+    end
 end)
 
 return Module, Cache
