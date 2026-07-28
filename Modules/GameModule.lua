@@ -819,140 +819,6 @@ NewModule("RemoveEffect", function()
     })
 end)
 
-NewModule("QuestManager", function()
-    local EnemiesModule = Module.EnemiesModule
-    local DataManagers = Module.DataManagers
-    
-    local Currently = DataManagers.Currently
-
-    local QuestManager = {} do
-        QuestManager.Blacklist = { "BartiloQuest", "MarineQuest", "CitizenQuest", "ImpelQuest" }
-        QuestManager.GuideModule = require(ReplicatedStorage:WaitForChild('GuideModule'))
-        QuestManager.Quests = require(ReplicatedStorage:WaitForChild('Quests')) 
-    end
-
-    function QuestManager:Pack(Data, Levels)
-        return Data[ tostring(math.max(unpack(Levels))) ]
-    end
-
-    function QuestManager:GetMonster(CurrentLevel)
-        local Data, Levels = {}, {}
-        local Maximum = ({ {0, 700}, {700, 1500}, {1500, math.huge} })[ Module.Sea ]
-
-        for Name, Task in self.Quests do
-            if table.find(self.Blacklist, Name) then continue end
-
-            for Number, Mission in Task do
-                local Level = Mission.LevelReq
-                local Monster, Value = next(Mission.Task)
-
-                if Level >= Maximum[1] and Level < Maximum[2] and CurrentLevel >= Level and Value > 1 then
-                    table.insert(Levels, Level)
-
-                    Data[ tostring(Level) ] = {
-                        Name = Mission.Name,
-                        Level = Number,
-                        Monster = Monster,
-                    }
-                end
-            end
-        end
-
-        if #Levels == 0 then return nil end
-
-        return self:Pack(Data, Levels)
-    end
-
-    function QuestManager:NPCsData(CurrentLevel)
-        local Data, Levels = {}, {}
-
-        for _, Npcs in self.GuideModule.Data.NPCList do
-            if not Npcs.InternalQuestName then continue end
-
-            if not table.find(self.Blacklist, Npcs.InternalQuestName) then
-                local Level = Npcs.Levels[1]
-
-                if CurrentLevel >= Level then
-                    table.insert(Levels, Level)
-                    Data[ tostring(Level) ] = {
-                        Position = Npcs.Position,
-                        Quest = Npcs.InternalQuestName,
-                    }
-                end 
-            end
-        end
-
-        if #Levels == 0 then return nil end
-
-        return self:Pack(Data, Levels)
-    end
-    
-    function QuestManager:GetBossData(CurrentLevel)
-        local BestBoss, BestLevel = nil, -math.huge
-
-        for Name, Data in Currently.Bosses do
-            local Level = Data.Level
-            local Quest = Data.Quest
-
-            if Level <= CurrentLevel and Level > BestLevel then
-                BestLevel = Level
-
-                BestBoss = {
-                    Name = Name,
-                    Monster = Name,
-                    Quest = Quest[1],
-                    Position = Quest[2],
-                    Level = Quest[3] or 3
-                }
-            end
-        end
-
-        if BestBoss and EnemiesModule:GetClosestByTag(BestBoss.Monster) then
-            return BestBoss
-        end
-    end
-
-    function QuestManager:GetQuest()
-        local Level = DataManagers.Level
-
-        if Level == 1 and Level <= 9 then
-            if tostring(Player.Team) == "Marines" then
-                return {
-                    Name = "Trainees",
-                    Monster = "Trainee",
-                    Level = 1,
-                    Quest = "MarineQuest",
-                    Position = CFrame.new(-2711, 24, 2104),
-                }
-            elseif tostring(Player.Team) == "Pirates" then
-                return {
-                    Name = "Bandits",
-                    Monster = "Bandit",
-                    Level = 1,
-                    Quest = "BanditQuest1",
-                    Position = CFrame.new(1059, 15, 1550),
-                }
-            end
-        else
-            local BossData = self:GetBossData(Level)
-            if BossData then return BossData end
-            
-            local Data = self:GetMonster(Level)
-            if not Data then return end
-
-            local NPCsData = self:NPCsData(Level)
-            if not NPCsData then return end
-
-            Data.Quest = NPCsData.Quest
-            Data.Position = CFrame.new(NPCsData.Position)
-
-            return Data
-        end
-    end
-
-    return QuestManager
-end)
-
 NewModule("EnemiesModule", function()
     local EnemiesModule = CreateDictionary({
         "__CakePrince", "__PirateRaid", "__RaidBoss", "__TyrantSkies", "__Bones", "__Elite", "__Others", 
@@ -1198,6 +1064,140 @@ NewModule("EnemiesModule", function()
     Connect(CollectionService:GetInstanceAddedSignal(BRING_TAG), Bring)
 
     return EnemiesModule
+end)
+
+NewModule("QuestManager", function()
+    local EnemiesModule = Module.EnemiesModule
+    local DataManagers = Module.DataManagers
+
+    local Currently = DataManagers.Currently
+
+    local QuestManager = {} do
+        QuestManager.Blacklist = { "BartiloQuest", "MarineQuest", "CitizenQuest", "ImpelQuest" }
+        QuestManager.GuideModule = require(ReplicatedStorage:WaitForChild('GuideModule'))
+        QuestManager.Quests = require(ReplicatedStorage:WaitForChild('Quests')) 
+    end
+
+    function QuestManager:Pack(Data, Levels)
+        return Data[ tostring(math.max(unpack(Levels))) ]
+    end
+
+    function QuestManager:GetMonster(CurrentLevel)
+        local Data, Levels = {}, {}
+        local Maximum = ({ {0, 700}, {700, 1500}, {1500, math.huge} })[ Module.Sea ]
+
+        for Name, Task in self.Quests do
+            if table.find(self.Blacklist, Name) then continue end
+
+            for Number, Mission in Task do
+                local Level = Mission.LevelReq
+                local Monster, Value = next(Mission.Task)
+
+                if Level >= Maximum[1] and Level < Maximum[2] and CurrentLevel >= Level and Value > 1 then
+                    table.insert(Levels, Level)
+
+                    Data[ tostring(Level) ] = {
+                        Name = Mission.Name,
+                        Level = Number,
+                        Monster = Monster,
+                    }
+                end
+            end
+        end
+
+        if #Levels == 0 then return nil end
+
+        return self:Pack(Data, Levels)
+    end
+
+    function QuestManager:NPCsData(CurrentLevel)
+        local Data, Levels = {}, {}
+
+        for _, Npcs in self.GuideModule.Data.NPCList do
+            if not Npcs.InternalQuestName then continue end
+
+            if not table.find(self.Blacklist, Npcs.InternalQuestName) then
+                local Level = Npcs.Levels[1]
+
+                if CurrentLevel >= Level then
+                    table.insert(Levels, Level)
+                    Data[ tostring(Level) ] = {
+                        Position = Npcs.Position,
+                        Quest = Npcs.InternalQuestName,
+                    }
+                end 
+            end
+        end
+
+        if #Levels == 0 then return nil end
+
+        return self:Pack(Data, Levels)
+    end
+
+    function QuestManager:GetBossData(CurrentLevel)
+        local BestBoss, BestLevel = nil, -math.huge
+
+        for Name, Data in Currently.Bosses do
+            local Level = Data.Level
+            local Quest = Data.Quest
+
+            if Level <= CurrentLevel and Level > BestLevel then
+                BestLevel = Level
+
+                BestBoss = {
+                    Name = Name,
+                    Monster = Name,
+                    Quest = Quest[1],
+                    Position = Quest[2],
+                    Level = Quest[3] or 3
+                }
+            end
+        end
+
+        if BestBoss and EnemiesModule:GetClosestByTag(BestBoss.Monster) then
+            return BestBoss
+        end
+    end
+
+    function QuestManager:GetQuest()
+        local Level = DataManagers.Level
+
+        if Level == 1 and Level <= 9 then
+            if tostring(Player.Team) == "Marines" then
+                return {
+                    Name = "Trainees",
+                    Monster = "Trainee",
+                    Level = 1,
+                    Quest = "MarineQuest",
+                    Position = CFrame.new(-2711, 24, 2104),
+                }
+            elseif tostring(Player.Team) == "Pirates" then
+                return {
+                    Name = "Bandits",
+                    Monster = "Bandit",
+                    Level = 1,
+                    Quest = "BanditQuest1",
+                    Position = CFrame.new(1059, 15, 1550),
+                }
+            end
+        else
+            local BossData = self:GetBossData(Level)
+            if BossData then return BossData end
+
+            local Data = self:GetMonster(Level)
+            if not Data then return end
+
+            local NPCsData = self:NPCsData(Level)
+            if not NPCsData then return end
+
+            Data.Quest = NPCsData.Quest
+            Data.Position = CFrame.new(NPCsData.Position)
+
+            return Data
+        end
+    end
+
+    return QuestManager
 end)
 
 NewModule("PlayerManagers", function()
