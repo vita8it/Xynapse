@@ -547,6 +547,14 @@ NewPackage("Plugins", function()
     function Plugins:Page(Icon)
         return self:ProxyPage( self.Library:NewPage(Icon) )
     end
+    
+    function Plugins:TextLabel(Section, Info)
+        return Section:TextLabel({
+            Title = Info[1],
+            Desc = Info[2],
+            Text = Info[3] or nil
+        })
+    end
 
     function Plugins:Button(Section, Info, Callback)
         return Section:Button({
