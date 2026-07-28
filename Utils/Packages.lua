@@ -399,6 +399,10 @@ end)
 
 NewPackage("EachOthers", function()
     local EachOthers = {}
+    
+    function EachOthers:Join(Id)
+        return TeleportService:TeleportToPlaceInstance(PlaceId, Id, LocalPlayer)
+    end
 
     function EachOthers:Reversed(Cursor)
         local Url = `https://games.roblox.com/v1/games/{PlaceId}/servers/Public?sortOrder=Asc&limit=100`
@@ -417,25 +421,21 @@ NewPackage("EachOthers", function()
             return TeleportService:Teleport(PlaceId, LocalPlayer)
         end
 
-        return TeleportService:TeleportToPlaceInstance(PlaceId, JobId, LocalPlayer)
+        return self:Join(JobId)
     end
 
     function EachOthers:Change()
         local Server, Next
 
         repeat
-            local Servers = Server:Reversed(Next)
+            local Servers = self:Reversed(Next)
 
             Server = Servers and Servers.data and Servers.data[1]
             Next = Servers and Servers.nextPageCursor
         until Server
 
         if not Server or not Server.id then return end
-        return TeleportService:TeleportToPlaceInstance(PlaceId, Server.id, LocalPlayer)
-    end
-
-    function EachOthers:Join(Id)
-        return TeleportService:TeleportToPlaceInstance(PlaceId, Id, LocalPlayer)
+        return self:Join(Server.id)
     end
 
     function EachOthers:Set3d(value)
@@ -674,7 +674,9 @@ NewPackage("Plugins", function()
                     "Change",
                     "Teleport to a different public server instance."
                 }, function()
-                    EachOthers:Change()
+                    task.spawn(function()
+                        EachOthers:Change()
+                    end)
                 end)
 
                 Plugins:Button(Managers.Server, {
