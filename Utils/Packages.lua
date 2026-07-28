@@ -787,6 +787,10 @@ end)
 NewPackage("BodyVelocity", function()
     local Connectors = Packages.Connectors
     
+    local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local Humanoid = Character and Character:WaitForChild('Humanoid', 10)
+    local HumanoidRootPart = Character and Character:WaitForChild('HumanoidRootPart', 10)
+    
     local BodyVelocity = Instance.new("BodyVelocity") do
         BodyVelocity.Velocity = Vector3.zero
         BodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
@@ -827,17 +831,15 @@ NewPackage("BodyVelocity", function()
     end
 
     local function NewCharacter(Character)
-        task.delay(0.25, function()
-            table.clear(CanCollideObjects)
+        table.clear(CanCollideObjects)
 
-            for _, Object in Character:GetDescendants() do AddObjectToBaseParts(Object) end
-            Character.DescendantAdded:Connect(AddObjectToBaseParts)
-            Character.DescendantRemoving:Connect(RemoveObjectsFromBaseParts)
-        end)
+        for _, Object in Character:GetDescendants() do AddObjectToBaseParts(Object) end
+        Character.DescendantAdded:Connect(AddObjectToBaseParts)
+        Character.DescendantRemoving:Connect(RemoveObjectsFromBaseParts)
     end
 
     Connectors.Connect(LocalPlayer.CharacterAdded, NewCharacter)
-    task.spawn(NewCharacter, LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait())
+    task.spawn(NewCharacter, Character)
 
     local function NoClipOnStepped(Character)
         if _ENV.OnFarm then
@@ -849,6 +851,14 @@ NewPackage("BodyVelocity", function()
                 CanCollideObjects[i].CanCollide = true
             end
         end
+    end
+    
+    local function IsAlive()
+        if not Character then return end
+        if not Humanoid then return end
+        if not HumanoidRootPart then return end
+
+        return (Humanoid and Humanoid.Health > 0) or HumanoidRootPart ~= nil
     end
 
     local function UpdateVelocityOnStepped(Character)
@@ -878,15 +888,16 @@ NewPackage("BodyVelocity", function()
     end
 
     Connectors.Connect(RenderStepped, function()
-        local Character = LocalPlayer.Character
-        if not Character then return end
-
-        local Humanoid = Character:FindFirstChildOfClass('Humanoid')
-
-        if Humanoid and Humanoid.Health > 0 then
+        if IsAlive() then
             UpdateVelocityOnStepped(Character)
             NoClipOnStepped(Character)
         end
+    end)
+    
+    Connectors.Connect(LocalPlayer.CharacterAdded, function(v)
+        Character = v
+        Humanoid = v:WaitForChild("Humanoid", 10)
+        HumanoidRootPart = v:WaitForChild("HumanoidRootPart", 10)
     end)
 
     return BodyVelocity
