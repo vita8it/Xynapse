@@ -203,25 +203,21 @@ local DataModule = {} do
                 Position = Vector3.new(-4807, 21, 4360),
                 Quest = { "MarineQuest2", CFrame.new(-5035, 29, 4326), 2 },
                 Level = 130,
-                Index = 2
             },
             ["Warden"] = {
                 Position = Vector3.new(5230, 4, 749),
                 Quest = { "ImpelQuest", CFrame.new(5191, 4, 692), 1 },
                 Level = 220,
-                Index = 1
             },
             ["Chief Warden"] = {
                 Position = Vector3.new(5230, 4, 749),
                 Quest = { "ImpelQuest", CFrame.new(5191, 4, 692), 2 },
                 Level = 230,
-                Index = 2
             },
             ["Swan"] = {
                 Position = Vector3.new(5230, 4, 749),
                 Quest = { "ImpelQuest", CFrame.new(5191, 4, 692) },
                 Level = 240,
-                Index = 3
             },
             ["Magma Admiral"] = {
                 Position = Vector3.new(-5694, 18, 8735),
