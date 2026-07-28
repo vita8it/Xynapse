@@ -477,7 +477,10 @@ NewModule("FastAttack", function()
         CurrentBladeHits = {}
 
         self:ProcessHits(Enemies, Distance)
-        self:ProcessHits(Characters, Distance)
+        
+        if Settings['Attack Players'] then
+            self:ProcessHits(Characters, Distance) 
+        end
 
         return true
     end
@@ -1395,7 +1398,7 @@ NewModule("IndicatorHandler", function()
 
             CustomName = function(Fruit, Distance)
                 return IndicatorHandler:Text(
-                    IndicatorHandler:GetBloxFruitName(Fruit),
+                    IndicatorHandler:ToBloxFruit(Fruit),
                     Distance
                 )
             end,
@@ -1608,7 +1611,8 @@ NewModule("ObjectModule", function()
         Position = typeof(Position) == "Instance" and Position.Position or Position
         local Offset = Position - WaterBase.Position
         
-        return math.abs(Offset.X) <= HalfSize.X and math.abs(Offset.Z) <= HalfSize.Z and Offset.Y <= 2
+        return math.abs(Offset.X) <= HalfSize.X and
+            math.abs(Offset.Z) <= HalfSize.Z and Offset.Y <= 2
     end
     
     function ObjectModule:RemoveBoatCollision(Boat)
