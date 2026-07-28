@@ -888,22 +888,24 @@ NewModule("QuestManager", function()
     end
     
     function QuestManager:GetBossData(CurrentLevel)
-        local BestBoss, BestLevel = nil, math.huge
+        local BestBoss, BestLevel = nil, -math.huge
 
-        for Name, Data in next, Currently.Bosses do
-            if Data.Level <= CurrentLevel and Data.Level > BestLevel then
-                BestLevel = Data.Level
+        for Name, Data in Currently.Bosses do
+            local Level = Data.Level
+
+            if Level <= CurrentLevel and Level > BestLevel then
+                BestLevel = Level
 
                 BestBoss = {
                     Name = Name,
                     Monster = Name,
-                    Level = 3,
                     Quest = Data.Quest,
+                    Level = Data.Index or 3,
                     Position = Data.Position,
                 }
             end
         end
-        
+
         if BestBoss and EnemiesModule:GetClosestByTag(BestBoss.Monster) then
             return BestBoss
         end
