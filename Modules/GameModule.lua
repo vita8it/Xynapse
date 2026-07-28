@@ -892,6 +892,7 @@ NewModule("QuestManager", function()
 
         for Name, Data in Currently.Bosses do
             local Level = Data.Level
+            local Quest = Data.Quest
 
             if Level <= CurrentLevel and Level > BestLevel then
                 BestLevel = Level
@@ -899,9 +900,9 @@ NewModule("QuestManager", function()
                 BestBoss = {
                     Name = Name,
                     Monster = Name,
-                    Quest = Data.Quest,
-                    Level = Data.Index or 3,
-                    Position = Data.Position,
+                    Quest = Quest[1],
+                    Position = Quest[2],
+                    Level = Quest[3] or 3
                 }
             end
         end
