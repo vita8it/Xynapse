@@ -463,19 +463,9 @@ NewPackage("Plugins", function()
     local EachOthers = Packages.EachOthers
 
     local Configable = Packages.Configurators.new(Respoitory)
-
-    function Plugins:ProxyPage(Page)
-        return setmetatable({}, {
-            __index = Page,
-            __newindex = function(self, Index, Value)
-                local Section = Page:Section({
-                    Header = Index,
-                    Light = StatColors[ Value ] or StatColors.Bugged
-                })
-
-                rawset(self, Index, Section)
-            end
-        })
+    
+    function Packages:Default( ... )
+        Configable:Default( ... )
     end
 
     function Plugins:Window(Args, Queueable)
