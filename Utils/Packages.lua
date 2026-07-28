@@ -827,17 +827,17 @@ NewPackage("BodyVelocity", function()
     end
 
     local function NewCharacter(Character)
-        if not Character then return end
+        task.delay(0.25, function()
+            table.clear(CanCollideObjects)
 
-        table.clear(CanCollideObjects)
-
-        for _, Object in Character:GetDescendants() do AddObjectToBaseParts(Object) end
-        Character.DescendantAdded:Connect(AddObjectToBaseParts)
-        Character.DescendantRemoving:Connect(RemoveObjectsFromBaseParts)
+            for _, Object in Character:GetDescendants() do AddObjectToBaseParts(Object) end
+            Character.DescendantAdded:Connect(AddObjectToBaseParts)
+            Character.DescendantRemoving:Connect(RemoveObjectsFromBaseParts)
+        end)
     end
 
     Connectors.Connect(LocalPlayer.CharacterAdded, NewCharacter)
-    task.spawn(NewCharacter, LocalPlayer.Character)
+    task.spawn(NewCharacter, LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait())
 
     local function NoClipOnStepped(Character)
         if _ENV.OnFarm then
