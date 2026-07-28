@@ -1,4 +1,4 @@
-local Sea = 1
+local Sea = ...
 local DataModule = {} do
     DataModule.Shops = {
         ["Ability"] = {
