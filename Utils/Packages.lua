@@ -2,9 +2,10 @@ local Importer = ...
 
 local _ENV = (getgenv or getrenv or getfenv)()
 
-local Cache = {}
-local Packages = {}
-local Settings = {}
+local Packages, Settings = {}, {}
+local Cache, Errors = {}, _ENV.ERRORS or {} do
+    _ENV.ERRORS = Errors
+end
 
 local Session = os.clock() do
     _ENV.Session = Session
@@ -41,6 +42,45 @@ function NewPackage(Name, Module)
         return Packages[Name]
     end
 end 
+
+function TableToString(Value, Indent, Seen)
+    Indent = Indent or 0
+    Seen = Seen or {}
+
+    if type(Value) ~= "table" then
+        if typeof(Value) == "Instance" then
+            return Value:GetFullName()
+        elseif type(Value) == "string" then
+            return string.format("%q", Value)
+        end
+
+        return tostring(Value)
+    end
+
+    if Seen[Value] then
+        return "<recursive>"
+    end
+
+    Seen[Value] = true
+
+    local Space = string.rep("    ", Indent)
+    local Result = {"{\n"}
+
+    for Key, Object in next, Value do
+        table.insert(Result,
+            string.format(
+                "%s    [%s] = %s,\n",
+                Space,
+                TableToString(Key, 0, Seen),
+                TableToString(Object, Indent + 1, Seen)
+            )
+        )
+    end
+
+    table.insert(Result, Space .. "}")
+
+    return table.concat(Result)
+end
 
 NewPackage("Importer", function()
     return Importer
@@ -178,6 +218,10 @@ NewPackage("Queueable", function()
 
         local Option = _ENV.RunningOption or "Unknow"
         local Text = (`error [ { Option } ] { Message }`)
+        
+        if not Errors[Option] then
+            Errors[Option] = {}
+        end
 
         if _ENV.Error then
             _ENV.Error.Text ..= `\n\n{ Text }`
@@ -189,6 +233,8 @@ NewPackage("Queueable", function()
 
             _ENV.Error = Error
         end
+        
+        table.insert(Errors[Option], Message)
     end
 
     function Queueable:ResetQueue()
@@ -600,6 +646,15 @@ NewPackage("Plugins", function()
         Configable:Default("Language", "English")
 
         local Managers = Plugins:Page(134261589888025) do
+            Managers.Errors = "Working" do
+                Plugins:Button(Managers.Errors, {
+                    "Copy Error",
+                    "Copy all errors that have occurred."
+                }, function()
+                    pcall(setclipboard, TableToString(Errors))
+                end)
+            end
+            
             Managers.Server = "Working" do
                 Configable:Default("JobId", JobId)
 
