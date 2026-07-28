@@ -483,6 +483,20 @@ NewPackage("Plugins", function()
 
         return self.Library
     end
+    
+    function Plugins:ProxyPage(Page)
+        return setmetatable({}, {
+            __index = Page,
+            __newindex = function(self, Index, Value)
+                local Section = Page:Section({
+                    Header = Index,
+                    Light = StatColors[ Value ] or StatColors.Bugged
+                })
+
+                rawset(self, Index, Section)
+            end
+        })
+    end
 
     function Plugins:Page(Icon)
         return self:ProxyPage( self.Library:NewPage(Icon) )
