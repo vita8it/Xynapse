@@ -1610,9 +1610,9 @@ NewModule("ObjectModule", function()
     
     function ObjectModule:WalkOnWater(Value)
         if Value then
-            WaterBase.Size.Y = HIDDEN_SETTINGS.WATER_Y
+            WaterBase.Size = Vector3.new(1000, HIDDEN_SETTINGS.WATER_Y, 1000)
         else
-            WaterBase.Size.Y = HalfSize
+            WaterBase.Size = Vector3.new(1000, 80, 1000)
         end
     end
     
