@@ -784,7 +784,7 @@ NewModule("CodeManager", function()
 
             for Code, Text in Codes do
                 Remotes.Redeem:InvokeServer(Code)
-                wait(Code, Text);
+                warn(Code, Text);
             end
         end,
     })
