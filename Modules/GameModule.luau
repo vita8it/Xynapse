@@ -409,7 +409,7 @@ Module.GoodNetwork = (function()
         Net = Modules:WaitForChild("Net")
     }
 
-    function Module:GetRemote(Name)
+    function GoodNetwork:GetRemote(Name)
         local CachedRemote = Cache.__GoodNetwork[Name]
         if CachedRemote then return CachedRemote end
 
@@ -1088,6 +1088,231 @@ Module.DataManagers = (function()
     Connect(Player.Data.ChildAdded, NewData)
 
     return DataManagers
+end)()
+
+Module.InventoryModule = (function()
+    local InventoryModule = {} do
+        InventoryModule.Requirements = {}
+        InventoryModule.Unlocked = {}
+        InventoryModule.Mastery = {}
+        InventoryModule.Items = {}
+        InventoryModule.Count = {}
+    end
+
+    function InventoryModule:HasFruit(Container)
+        if not Container then return false end
+
+        local Objects = Container:GetChildren()
+
+        for i = 1, #Objects do
+            local Object = Objects[i]
+
+            if Object.Name:find("Fruit") then
+                return true
+            end
+        end
+    end
+
+    function InventoryModule:HaveFruit(Character, Backpack)
+        Character = Character or Player.Character
+        Backpack = Backpack or Player:FindFirstChildOfClass("Backpack")
+
+        return self:HasFruit(Character) or self:HasFruit(Backpack)
+    end
+
+    function InventoryModule:GetFruits(IsHigh)
+        local Collects, Threshold = {}, 999999
+        local Fruits = Module:ComF("GetFruits")
+
+        for _, Fruit in pairs(Fruits) do
+            local Price = Fruit.Price or 0
+            local Name = Fruit.Name or "Unknow"
+
+            if (Price >= Threshold) == IsHigh then
+                Collects[ Name ] = Price
+            end
+        end
+
+        return Collects
+    end 
+
+    function InventoryModule:GetFruit(IsHigh)
+        local Target, Lowest = nil, math.huge
+        local Fruits = self:GetFruits(IsHigh)
+
+        for _, RawItem in self.Items do
+            local Item = RawItem.details or RawItem
+            local Value = Fruits[Item.Name]
+
+            if Value and Value < Lowest then
+                Lowest, Target = Value, Item.Name
+            end
+        end
+
+        return Target
+    end
+
+    function InventoryModule:LoadFruit(IsHigh)
+        if self:HaveFruit() then return  end
+
+        local Fruit = self:GetFruit(IsHigh)
+        if not Fruit then return end
+
+        return Module:ComF("LoadFruit", Fruit)
+    end
+
+    function InventoryModule:UpdateItem(Item)
+        if type(Item) == "table" then
+            local Details = Item.details or Item
+
+            if Details.Type == "Wear" then
+                Details.Type = "Accessory"
+            end
+
+            local Name = Details.Name do
+                if not Name then return end
+
+                self.Items[Name] = Item
+            end
+
+            if not self.Unlocked[Name] then
+                self.Unlocked[Name] = true
+            end
+
+            if Details.Count then
+                self.Count[Name] = Details.Count
+            end
+
+            if Details.Mastery then
+                self.Mastery[Name] = Details.Mastery
+            end
+
+            if Details.MasteryRequirements then
+                self.Requirements[Name] = Details.MasteryRequirements
+            end
+        end
+    end
+
+    function InventoryModule:CanUseGate()
+        return Module.Sea ~= 3 or Module:ComF("GetUnlockables").DefeatedIndraTrueForm
+    end
+
+    function InventoryModule:RemoveItem(Item)
+        local Details = type(Item) == "table" and (Item.details or Item) or nil
+        local ItemName = Details and Details.Name or Item
+
+        if type(ItemName) == "string" then
+            self.Unlocked[ItemName] = nil
+            self.Mastery[ItemName] = nil
+            self.Count[ItemName] = nil
+            self.Items[ItemName] = nil
+        end
+    end
+
+    function InventoryModule:HaveItem(Name, Character, Backpack)
+        if self.Unlocked[Name] then
+            return true
+        end
+
+        Character = Character or Player.Character
+        Backpack = Backpack or Player:FindFirstChildOfClass("Backpack")
+
+        if not Character or not Backpack then
+            return false
+        end
+
+        return Character:FindFirstChild(Name) or Backpack:FindFirstChild(Name)
+    end
+
+    task.spawn(function()
+        local Replication, Keys, ItemConfig = nil, nil, nil do
+            local Ok, Result = pcall(require, ReplicatedStorage.ItemReplicationService)
+
+            if Ok and type(Result) == "table" then
+                Replication = Result
+
+                local OkKeys, ResultKeys = pcall(require, ReplicatedStorage.ItemReplicationService.KEYS)
+
+                if OkKeys and type(ResultKeys) == "table" then
+                    Keys = ResultKeys
+                end
+            end
+
+            local OkConfig, ResultConfig = pcall(require, ReplicatedStorage.ItemConfig)
+
+            if OkConfig and type(ResultConfig) == "table" then
+                ItemConfig = ResultConfig
+            end
+        end
+
+        local function Resolve(ItemId)
+            if not ItemConfig then return nil end
+
+            local Ok, Conf = pcall(function()
+                return ItemConfig.match(ItemId):asNullable()
+            end)
+
+            if not Ok or type(Conf) ~= "table" or type(Conf.Index) ~= "table" then
+                return nil
+            end
+
+            return Conf.Index.StorageKey, Conf.Index.Type
+        end
+
+        local Cached = {}
+
+        local function SyncReplication()
+            if not Replication or not Keys then return end
+
+            local Seen, Completed = {}, true
+
+            for _, Set in { { Key = Keys.MASTERY, Field = "Mastery" }, { Key = Keys.QUANTITY, Field = "Count" } } do
+                local Ok, Items = pcall(function()
+                    return Replication:GetItems(Set.Key)
+                end)
+
+                if Ok and type(Items) == "table" then
+                    for _, Entry in Items do
+                        local Name = Resolve(Entry.ItemId)
+
+                        if Name then
+                            Seen[Name] = true
+
+                            if Cached[ Name ] and Cached[ Name ][ Set.Field ] == Entry.Value then
+                                continue
+                            end
+
+                            Cached[ Name ] = Cached[ Name ] or {}
+                            Cached[ Name ][ Set.Field ] = Entry.Value
+
+                            local Item = { Name = Name }
+
+                            Item[Set.Field] = Entry.Value
+                            InventoryModule:UpdateItem(Item)
+                        end
+                    end
+                else
+                    Completed = false
+                end
+            end
+
+            if Completed then
+                for Name in InventoryModule.Items do
+                    if not Seen[Name] then
+                        Cached[ Name ] = nil
+                        InventoryModule:RemoveItem(Name)
+                    end
+                end
+            end
+        end
+
+        repeat
+            SyncReplication()
+            task.wait(0.1)
+        until not (Replication and Keys and ItemConfig)
+    end)
+
+    return InventoryModule
 end)()
 
 Module.QuestManager = (function()
